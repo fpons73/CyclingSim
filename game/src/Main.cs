@@ -1,5 +1,7 @@
 using Godot;
+using ProCycling.Core.Models;
 using ProCycling.Core.Simulation;
+using ProCycling.Game.UI;
 
 namespace ProCycling.Game;
 
@@ -7,7 +9,68 @@ public partial class Main : Node2D
 {
     public override void _Ready()
     {
-        var rng = new SeededRandom(42);
-        GD.Print($"[PCRM] Pro Cycling Replay Manager listo. 1d6={rng.RollDie(6)} 2d6={rng.Roll2D6Sum()}");
+        // Self-test headless (verificación CI): carga datos + simula etapa llana + log.
+        if (OS.GetCmdlineArgs().Contains("--selftest"))
+        {
+            CallDeferred(nameof(RunSelfTest));
+            return;
+        }
+
+        if (Game.UI.GameManager.LoadData())
+            CallDeferred(nameof(GoPreStage));
+        else
+            GD.PushError("[PCRM] No se pudieron cargar los datos. Revisa game/data/.");
+    }
+
+    private void GoPreStage()
+    {
+        GetTree().ChangeSceneToFile("res://src/UI/PreStageScreen.tscn");
+    }
+
+    private void RunSelfTest()
+    {
+        GD.Print("[PCRM] SELFTEST: cargando datos...");
+        if (!Game.UI.GameManager.LoadData())
+        {
+            GD.PushError("[PCRM] SELFTEST falló: datos no disponibles.");
+            GetTree().Quit(1);
+            return;
+        }
+
+        var stage = Game.UI.GameData.Stages?.FirstOrDefault(s => s.Type == StageType.Flat);
+        if (stage is null)
+        {
+            GD.PushError("[PCRM] SELFTEST falló: sin etapa llana.");
+            GetTree().Quit(1);
+            return;
+        }
+
+        ulong seed = 2026;
+        if (!Game.UI.GameManager.PrepareRace(stage.Id, 12, seed))
+        {
+            GD.PushError("[PCRM] SELFTEST falló: no se pudo preparar la etapa.");
+            GetTree().Quit(1);
+            return;
+        }
+
+        GD.Print($"[PCRM] SELFTEST: etapa '{stage.Name}' ({stage.DistanceKm:0} km), " +
+                 $"{Game.UI.GameManager.SelectedRiders.Count} corredores, seed {seed}");
+        Game.UI.GameManager.RunRace();
+
+        foreach (var line in Game.UI.GameManager.State!.ActionLog.Take(8))
+            GD.Print(line);
+        GD.Print("...");
+        foreach (var line in Game.UI.GameManager.State.ActionLog.TakeLast(8))
+            GD.Print(line);
+
+        var top = Game.UI.GameManager.Results!.OrderBy(r => r.StageSeconds).Take(5);
+        foreach (var r in top)
+            GD.Print($"[PCRM] SELFTEST top: {Game.UI.GameManager.RiderName(r.RiderId)} " +
+                     $"{RiderCard.FormatTime(r.StageSeconds)} pts {r.PointsEarned}");
+
+        var winner = top.First();
+        GD.Print($"[PCRM] SELFTEST OK: ganador {Game.UI.GameManager.RiderName(winner.RiderId)} " +
+                 $"con {Game.UI.GameManager.State.Riders[winner.RiderId].Attributes.Sprint} de sprint.");
+        GetTree().Quit(0);
     }
 }

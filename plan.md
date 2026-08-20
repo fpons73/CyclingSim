@@ -214,12 +214,19 @@ localización ES/EN/FR (PRD §36–38).
 - CoreLib: modelos + `SeededRandom` + `RulesConfig` + tests xUnit de RNG/reproducibilidad.
 - Proyecto Godot mínimo importable (`--headless --import`) + `dotnet build` OK.
 
-### Entrega 1 — MVP (Fase 1)
-- Motor RNG integrado, BD cargada, 14 atributos, ficha de corredor, fatiga.
-- Etapa llana completa: fuga → persecución → pelotón → sprint masivo.
-- IA básica + Director Mode básico.
-- Pantallas Pre/Etapa/Post + guardado + exportación CSV/HTML.
-- Métrica objetivo: etapa llana ≈ 10–15 min de simulación.
+### Entrega 1 — MVP (Fase 1) ✅ (motor y sim verificados; pulido visual pendiente)
+- Motor RNG integrado (`RaceSetup`), BD cargada desde `game/data` (3320 corredores, 221 equipos, 9 etapas).
+- `FlatStageSimulator` (CoreLib): secciones → velocidad por GV → fuga temprana → persecución con gap
+  objetivo (seno, pico mid-stage, caza ~7 km antes de meta) → sprint intermedio → sprint masivo
+  (SPR+ACC+FLA+fatiga+ruido RNG) con fuga superviviente opcional (5%).
+- IA básica: `RaceDecisionEngine` (DirectorMode Directed/Player/Assistant), persecución según
+  sprinter fuerte en pelotón a <50 km del final.
+- UI Godot: PreStage (etapa/equipos/seed + fichas RiderCard 14 atributos+fatiga), RaceScreen
+  (log + grupos), PostStage (clasificaciones + guardado user://saves + export CSV/HTML).
+- Verificación: `dotnet test` (39 tests) + `godot --headless --selftest` (carga datos, simula,
+  log, exit 0) + `--quit-after` carga de escenas.
+- Métrica objetivo: etapa llana ≈ subsegun do en simulación headless (los 10-15 min serían con
+  animación/dados en E4; en E1 la etapa se resuelve al instante).
 
 ### Entrega 2 — Montaña y Tour (Fase 2)
 - Media montaña, colina, montaña, descensos, KoM.

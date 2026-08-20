@@ -30,7 +30,7 @@ public sealed class RulesConfig
 
     // --- Group Value / velocidad ---
     public double GvRef { get; set; } = 65.0;                 // GV de referencia → velocidad base
-    public double GvKmhPerPoint { get; set; } = 0.85;         // km/h por punto de GV
+    public double GvKmhPerPoint { get; set; } = 0.15;         // km/h por punto de GV
     public double CohesionDropThreshold { get; set; } = 7.0;  // stdev (en GV) sobre el que la cohesión cae a 0
     public double WorkingRidersBreakaway { get; set; } = 3;   // nº de corredores que "ruedan" en una fuga
     public double WorkingRidersPeloton { get; set; } = 6;     // nº de corredores activos del pelotón (tempo)
@@ -40,6 +40,20 @@ public sealed class RulesConfig
         ["flat"] = 44.0, ["rolling"] = 40.0, ["hill"] = 37.0,
         ["climb"] = 29.0, ["descent"] = 52.0, ["cobbles"] = 35.5, ["tt"] = 46.0
     };
+
+    // --- Fuga y persecución (etapa llana y general) ---
+    public int BreakawayMinSize { get; set; } = 1;
+    public int BreakawayMaxSize { get; set; } = 6;
+    public double BreakawayMaxGapSeconds { get; set; } = 540;      // gap máximo típico (~9 min)
+    public double CatchPointKmFromFinish { get; set; } = 7.0;      // km antes de meta donde se neutraliza
+    public double GapCorrectionFactor { get; set; } = 0.012;       // sensibilidad del pelotón para ajustar a gap objetivo
+    public double BreakawaySurvivalChance { get; set; } = 0.05;    // probabilidad de que la fuga aguante (no sprint masivo)
+    public double BreakawayEffortFatigue { get; set; } = 0.8;      // esfuerzo extra de la fuga por sección
+    public double IntermediateSprintGroupBonus { get; set; } = 3.0; // punto de corte entre grupos para el sprint intermedio
+
+    // --- Sprint masivo ---
+    public double SprintTimeIncrement { get; set; } = 0.18;        // segundos entre posiciones del pelotón al sprint
+    public int SprintContenders { get; set; } = 40;                // corredores que disputan el sprint masivo
 
     // --- Pesos por tipo de acción (atributo → peso) ---
     public Dictionary<string, Dictionary<string, double>> Profiles { get; set; } = DefaultProfiles();

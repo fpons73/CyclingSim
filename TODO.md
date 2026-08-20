@@ -16,11 +16,13 @@ Estado actualizado en cada avance. Última actualización: 2026-08-20.
 - [x] E0: proyecto Godot game/ (Godot.NET.Sdk 4.7.2) compila y ARRANCA con runtime C# (`[PCRM] ... 1d6=1 2d6=7`)
 - [x] E0: **BLOQUEO runtime Godot+C# RESUELTO** — causas: (1) `godot.exe` de WinGet es symlink → ejecutar siempre el exe real junto a `GodotSharp/`; (2) DLL debe compilarse a `.godot/mono/temp/bin/Debug`. Detalle en plan.md §0.
 
-### Entrega 1 — MVP (Fase 1)
-- [ ] E1: motor RNG integrado, BD cargada, 14 atributos, ficha de corredor, fatiga
-- [ ] E1: etapa llana completa (fuga -> persecución -> pelotón -> sprint), sprint masivo
-- [ ] E1: IA básica + Director Mode básico
-- [ ] E1: pantallas Pre/Etapa/Post + guardado + exportación CSV/HTML
+### Entrega 1 — MVP (Fase 1) ✅ motor/sim/UI Core
+- [x] E1: motor RNG integrado (RaceSetup + SeededRandom), BD cargada desde game/ (3320 corredores, 221 equipos)
+- [x] E1: FlatStageSimulator: fuga -> persecución (gap objetivo) -> sprint masivo; 39 tests xUnit verdes
+- [x] E1: IA básica + Director Mode (RaceDecisionEngine, 4 tests) y Player Mode (decisión pendiente registrada)
+- [x] E1: ficha de corredor (RiderCard: 14 atributos + fatiga), pantallas Pre/Etapa/Post Godot
+- [x] E1: selftest headless `godot --selftest` (carga BD + simula + log) y salvado/export CSV/HTML
+- [ ] E1: sprint/render visual pulido de pantallas (verificación visual por el usuario en editor)
 
 ### Entrega 2 — Montaña y Tour (Fase 2)
 - [ ] E2: media montaña, colina, montaña, descensos, KoM
