@@ -1,0 +1,29 @@
+# .NET
+bin/
+obj/
+*.user
+.vs/
+TestResults/
+*.trx
+
+# Godot
+game/.godot/
+game/data/
+*.mono.csproj.bak
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+
+# Datos fuente / generados
+*.xlsx
+data/pcrm.sqlite
+data/stages/*.json
+
+# IDE
+.idea/
+.vscode/
+
+# Logs temporales
+*.log
