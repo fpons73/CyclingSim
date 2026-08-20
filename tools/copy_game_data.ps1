@@ -8,4 +8,10 @@ $stageDir = Join-Path $root "data\stages"
 if (Test-Path $stageDir) {
     Copy-Item -Path (Join-Path $stageDir "*.json") -Destination $dest -Force
 }
-Write-Host "OK  datos copiados a game\data ($((Get-ChildItem $dest).Count) ficheros)"
+$i18nDir = Join-Path $root "data\i18n"
+if (Test-Path $i18nDir) {
+    $i18nDest = Join-Path $dest "i18n"
+    New-Item -ItemType Directory -Path $i18nDest -Force | Out-Null
+    Copy-Item -Path (Join-Path $i18nDir "*.json") -Destination $i18nDest -Force
+}
+Write-Host "OK  datos copiados a game\data ($((Get-ChildItem $dest -Recurse -File).Count) ficheros)"

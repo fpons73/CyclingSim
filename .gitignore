@@ -7,6 +7,7 @@ TestResults/
 *.trx
 
 # Godot
+*.uid
 game/.godot/
 game/data/
 *.mono.csproj.bak

@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 """Importador de datos: XLSX -> SQLite (data/pcrm.sqlite) + catálogo de etapas JSON (data/stages/).
 
-Pro Cycling Replay Manager · E0
+Pro Cycling Replay Manager
 - Une corredores y equipos por NOMBRE (los TeamID difieren entre ficheros).
 - Deriva roles/especializaciones de ciclista a partir de las 14 estadísticas
   (la columna 'Especialidad' viene vacía en el 100% de los registros).
 - Normaliza fechas de nacimiento (los '00/00/2000' quedan como NULL).
+- Importa una o varias temporadas (SEASONS) → SqliteStore.LoadSeason(season_id).
 - Genera el catálogo de etapas (9 perfiles individuales + Grande Boucle 2026, 21 etapas).
 """
 import json
@@ -18,9 +19,15 @@ import pandas as pd
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(ROOT, "data")
 STAGES = os.path.join(DATA, "stages")
-XLSX_RIDERS = os.path.join(ROOT, "Ciclistas_2026_1.xlsx")
-XLSX_TEAMS = os.path.join(ROOT, "Equipos_2026.xlsx")
 DB_PATH = os.path.join(DATA, "pcrm.sqlite")
+
+# Temporadas a importar (Fase 4 — importación multi-temporada).
+# Añade una entrada por año: el motor las carga por season_id sin recompilar.
+# Si un fichero de una temporada no existe, se omite con un aviso.
+SEASONS = [
+    {"season_id": 3, "year": 2026, "name": "Season 2026",
+     "riders_xlsx": "Ciclistas_2026_1.xlsx", "teams_xlsx": "Equipos_2026.xlsx"},
+]
 
 ATTRS = ["FLA", "MNT", "MM", "HIL", "TTR", "PRL", "COB", "SPR", "ACC", "DHI", "ATT", "STA", "RES", "REC"]
 
@@ -66,8 +73,8 @@ def parse_birth(raw):
         return None
 
 
-def load_riders():
-    df = pd.read_excel(XLSX_RIDERS, dtype={"TeamID": "Int64", "SeasonID": "Int64"})
+def load_riders(xlsx_path, default_season_id=3):
+    df = pd.read_excel(xlsx_path, dtype={"TeamID": "Int64", "SeasonID": "Int64"})
     rows = []
     for _, r in df.iterrows():
         rec = {c: int(r[c]) for c in ATTRS}
@@ -76,13 +83,13 @@ def load_riders():
             "birth_date": parse_birth(r["F_Nac"]),
             "nationality": str(r["Nacionalidad"]).strip() if pd.notna(r["Nacionalidad"]) else None,
             "team_name": str(r["Equipo"]).strip(),
-            "season_id": int(r["SeasonID"]) if pd.notna(r["SeasonID"]) else 3,
+            "season_id": int(r["SeasonID"]) if pd.notna(r["SeasonID"]) else default_season_id,
         } | rec)
     return rows
 
 
-def load_teams():
-    df = pd.read_excel(XLSX_TEAMS)
+def load_teams(xlsx_path):
+    df = pd.read_excel(xlsx_path)
     teams = {}
     for _, r in df.iterrows():
         name = str(r["Nombre"]).strip()
@@ -94,19 +101,14 @@ def load_teams():
     return teams
 
 
-def build_db(riders, teams_info):
-    if os.path.exists(DB_PATH):
-        os.remove(DB_PATH)
-    os.makedirs(STAGES, exist_ok=True)
-    con = sqlite3.connect(DB_PATH)
-    cur = con.cursor()
-    cur.executescript("""
-        CREATE TABLE seasons (
+def create_schema(con):
+    con.executescript("""
+        CREATE TABLE IF NOT EXISTS seasons (
             id INTEGER PRIMARY KEY,
             name TEXT,
             year INTEGER
         );
-        CREATE TABLE teams (
+        CREATE TABLE IF NOT EXISTS teams (
             id INTEGER PRIMARY KEY,
             name TEXT,
             abbr TEXT,
@@ -114,7 +116,7 @@ def build_db(riders, teams_info):
             category TEXT,
             season_id INTEGER
         );
-        CREATE TABLE riders (
+        CREATE TABLE IF NOT EXISTS riders (
             id INTEGER PRIMARY KEY,
             name TEXT,
             birth_date TEXT,
@@ -128,35 +130,45 @@ def build_db(riders, teams_info):
             res INTEGER, rec INTEGER,
             FOREIGN KEY(team_id) REFERENCES teams(id)
         );
-        CREATE INDEX idx_riders_team ON riders(team_id);
+        CREATE INDEX IF NOT EXISTS idx_riders_team ON riders(team_id);
     """)
 
-    season_ids = sorted({int(r["season_id"]) for r in riders})
-    for sid in season_ids or [3]:
-        cur.execute("INSERT INTO seasons(id, name, year) VALUES (?, ?, ?)",
-                    (sid, f"Season {sid}", 2024 + sid))
 
-    # equipos corporativos de los ficheros
-    team_id = 0
-    for name, info in teams_info.items():
-        team_id += 1
+def build_db(con, season):
+    """Importa una temporada (equipos + corredores + fila en seasons)."""
+    cur = con.cursor()
+    sid, year, name, riders_xlsx, teams_xlsx = (
+        season["season_id"], season["year"], season["name"],
+        os.path.join(ROOT, season["riders_xlsx"]), os.path.join(ROOT, season["teams_xlsx"]))
+    if not (os.path.exists(riders_xlsx) and os.path.exists(teams_xlsx)):
+        print(f"  aviso: temporada {sid} ({name}) sin ficheros, omitida.")
+        return 0, 0
+
+    cur.execute("INSERT OR REPLACE INTO seasons(id, name, year) VALUES (?, ?, ?)",
+                (sid, name, year))
+    riders = load_riders(riders_xlsx, sid)
+    teams_info = load_teams(teams_xlsx)
+
+    # equipos corporativos de la temporada
+    cur.execute("DELETE FROM riders WHERE season_id = ?", (sid,))
+    cur.execute("DELETE FROM teams WHERE season_id = ?", (sid,))
+    for tname, info in teams_info.items():
         cur.execute("""INSERT INTO teams(id, name, abbr, country, category, season_id)
-                       VALUES (?, ?, ?, ?, ?, ?)""",
-                    (team_id, name, info["abbr"], info["country"], info["category"], 3))
+                       VALUES (NULL, ?, ?, ?, ?, ?)""",
+                    (tname, info["abbr"], info["country"], info["category"], sid))
 
     # + equipos sintéticos para plantillas sin ficha
     synthetic_used = set()
     for r in riders:
-        name = r["team_name"]
-        if name not in teams_info and name not in synthetic_used:
-            synthetic_used.add(name)
-            team_id += 1
+        name_ = r["team_name"]
+        if name_ not in teams_info and name_ not in synthetic_used:
+            synthetic_used.add(name_)
             cur.execute("""INSERT INTO teams(id, name, abbr, country, category, season_id)
-                           VALUES (?, ?, ?, ?, ?, ?)""",
-                        (team_id, name, "", None, "Unknown", 3))
-            teams_info[name] = {"abbr": "", "country": None, "category": "Unknown"}
+                           VALUES (NULL, ?, '', NULL, 'Unknown', ?)""",
+                        (name_, sid))
+            teams_info[name_] = {"abbr": "", "country": None, "category": "Unknown"}
 
-    cur.execute("SELECT id, name FROM teams")
+    cur.execute("SELECT id, name FROM teams WHERE season_id = ?", (sid,))
     name_to_id = {n: i for i, n in cur.fetchall()}
 
     # riders con dorsal por equipo (orden de fila en el fichero)
@@ -168,17 +180,13 @@ def build_db(riders, teams_info):
         cur.execute("""INSERT INTO riders(
                 id, name, birth_date, nationality, team_id, season_id, number, roles,
                 fla, mnt, mm, hil, ttr, prl, cob, spr, acc, dhi, att, sta, res, rec)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (None, r["name"], r["birth_date"], r["nationality"], tid,
+              VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (r["name"], r["birth_date"], r["nationality"], tid,
                      r["season_id"], counters[tid], json.dumps(roles),
                      r["FLA"], r["MNT"], r["MM"], r["HIL"], r["TTR"], r["PRL"],
                      r["COB"], r["SPR"], r["ACC"], r["DHI"], r["ATT"], r["STA"],
                      r["RES"], r["REC"]))
-    con.commit()
-    total = cur.execute("SELECT COUNT(*) FROM riders").fetchone()[0]
-    con.close()
-    print(f"  sintéticos añadidos: {len(synthetic_used)} team(s)")
-    return total
+    return len(riders), len(name_to_id)
 
 
 # ---------------------------------------------------------------------------
@@ -333,12 +341,22 @@ def write_stage_json(s):
 
 
 def main():
-    riders = load_riders()
-    teams_info = load_teams()
-    total = build_db(riders, teams_info)
-    print(f"OK  riders={total}  teams={len(teams_info)}  db={DB_PATH}")
-
+    if os.path.exists(DB_PATH):
+        os.remove(DB_PATH)
     os.makedirs(STAGES, exist_ok=True)
+    con = sqlite3.connect(DB_PATH)
+    create_schema(con)
+    total_teams = total_riders = 0
+    for season in SEASONS:
+        n_riders, n_teams = build_db(con, season)
+        con.commit()
+        total_riders += n_riders
+        total_teams += n_teams
+        print(f"  temporada {season['season_id']} ({season['name']}): "
+              f"riders={n_riders} teams={n_teams}")
+    con.close()
+    print(f"OK  riders={total_riders}  teams={total_teams}  db={DB_PATH}")
+
     for s in CATALOG:
         write_stage_json(s)
     tour_stages = grande_boucle_2026()

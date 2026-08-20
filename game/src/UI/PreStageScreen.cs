@@ -22,6 +22,7 @@ public partial class PreStageScreen : Control
                 return;
             }
         }
+        GameLocalizer.Load();
         Build();
     }
 
@@ -33,7 +34,7 @@ public partial class PreStageScreen : Control
 
         root.AddChild(new Label
         {
-            Text = "PRO CYCLING REPLAY MANAGER — Etapa individual",
+            Text = $"{GameLocalizer.T("app.title")} — {GameLocalizer.T("prestage.mode.individual")}",
             HorizontalAlignment = HorizontalAlignment.Center
         });
         var title = root.GetChild<Label>(0);
@@ -42,21 +43,21 @@ public partial class PreStageScreen : Control
         var hbox = new HBoxContainer();
         root.AddChild(hbox);
 
-        hbox.AddChild(new Label { Text = "Etapa:" });
+        hbox.AddChild(new Label { Text = GameLocalizer.T("prestage.stage") + ":" });
         _stagePicker = new OptionButton { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         foreach (var stage in GameData.Stages ?? new List<Stage>())
-            _stagePicker.AddItem($"{stage.Name}  ({stage.DistanceKm:0} km)", stage.Id.GetHashCode());
+            _stagePicker.AddItem($"{stage.Name}  ({stage.DistanceKm:0} {GameLocalizer.T("common.km")})", stage.Id.GetHashCode());
         hbox.AddChild(_stagePicker);
 
-        hbox.AddChild(new Label { Text = "Equipos:" });
+        hbox.AddChild(new Label { Text = GameLocalizer.T("prestage.teams") + ":" });
         _teamCount = new SpinBox { MinValue = 4, MaxValue = 30, Value = 10, Step = 1 };
         hbox.AddChild(_teamCount);
 
-        hbox.AddChild(new Label { Text = "Seed:" });
+        hbox.AddChild(new Label { Text = GameLocalizer.T("prestage.seed") + ":" });
         _seedBox = new SpinBox { MinValue = 1, MaxValue = 99999, Value = GameManager.Seed, Step = 1 };
         hbox.AddChild(_seedBox);
 
-        var startButton = new Button { Text = "▶ Iniciar etapa" };
+        var startButton = new Button { Text = "▶ " + GameLocalizer.T("prestage.start") };
         startButton.Pressed += OnStart;
         hbox.AddChild(startButton);
 
@@ -84,7 +85,7 @@ public partial class PreStageScreen : Control
 
         int teams = (int)(_teamCount?.Value ?? 10);
         var (count, _, riders) = GameData.BuildStartList(teams);
-        _status!.Text = $"{count} corredores en start list (max 8/equipo).";
+        _status!.Text = GameLocalizer.T("prestage.startlist", count);
 
         foreach (var rider in riders.Take(12))
         {
@@ -93,7 +94,7 @@ public partial class PreStageScreen : Control
             _ridersList.AddChild(card);
         }
         if (riders.Count > 12)
-            _ridersList.AddChild(new Label { Text = $"... y {riders.Count - 12} corredores más" });
+            _ridersList.AddChild(new Label { Text = GameLocalizer.T("prestage.more_riders", riders.Count - 12) });
     }
 
     private void OnStart()
@@ -106,7 +107,7 @@ public partial class PreStageScreen : Control
 
         if (!GameManager.PrepareRace(stageId, teams, seed))
         {
-            _status!.Text = "Error preparando la etapa.";
+            _status!.Text = GameLocalizer.T("prestage.error.prepare");
             return;
         }
         GetTree().ChangeSceneToFile("res://src/UI/RaceScreen.tscn");

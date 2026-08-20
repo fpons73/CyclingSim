@@ -4,7 +4,7 @@ Estado actualizado en cada avance. Última actualización: 2026-08-20.
 
 ## En curso
 
-- [ ] **E1 — MVP (Fase 1)**
+- [ ] **E4 — Pulido (Fase 4)**: pendiente dados 3D/animaciones, modo espectador avanzado, optimización Windows 11 (verificación visual en editor)
 
 ## Entregas
 
@@ -39,6 +39,10 @@ Estado actualizado en cada avance. Última actualización: 2026-08-20.
 - [x] E3: IA avanzada — las 12 decisiones del PRD §21 (atacar, seguir ataque, perseguir, mantener ritmo, entrar en fuga, proteger líder, ahorrar energía, lanzar sprint, disputar KoM, controlar pelotón, contraatacar, riesgo en descenso) con objetivos por equipo (sprint/GC/puncheur/fuga/cazador KoM/neutral) y registro en el ActionLog en Director Mode
 - [x] E3: IA integrada en FlatStageSimulator (fuga según rol, control del pelotón, lanzamiento de sprint) y MountainStageSimulator (ataques/contraataques/follow, protección de líder, caza de KoM, riesgo en descenso); 60 tests xUnit verdes
 
-### Entrega 4 — Pulido (Fase 4)
-- [ ] E4: dados 3D/animaciones, modo espectador avanzado, Stage Editor
-- [ ] E4: importación histórica multi-temporada; i18n ES/EN/FR; optimización Windows 11
+### Entrega 4 — Pulido (Fase 4) 🔄
+- [x] E4: Stage Editor + StageValidator (CoreLib) y CLI `tools/StageEditor` (validate / profile ASCII / demo) para crear y validar etapas sin recompilar (PRD §28, §29 perfil de altimetría)
+- [x] E4: i18n ES/EN/FR — Localizer (CoreLib) con diccionarios JSON en `data/i18n/` + `GameLocalizer` integrado en PreStageScreen; fallback a español y por clave (PRD §38)
+- [x] E4: importación multi-temporada — `SeasonImporter` (CoreLib), `SqliteStore.LoadSeasons`, `tools/import_data.py` configurable por temporadas (SEASONS); 88 tests xUnit verdes
+- [x] E4: fix selftest CLI — Godot 4 pasa los args de usuario tras `--`; `Main.cs` ahora lee `OS.GetCmdlineUserArgs()` (causaba que `--selftest` no se detectara y bloquease el arranque cargando PreStageScene)
+- [x] E4: selftests headless verificados (--selftest ganador Tim Merlier; --selftest-tour líder GC #191, exit 0)
+- [ ] E4: dados 3D/animaciones, modo espectador avanzado, optimización Windows 11 (verificación visual)

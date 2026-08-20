@@ -1,0 +1,18 @@
+{
+  "app.title": "PRO CYCLING REPLAY MANAGER",
+  "prestage.mode.individual": "Individual stage",
+  "prestage.stage": "Stage",
+  "prestage.teams": "Teams",
+  "prestage.seed": "Seed",
+  "prestage.start": "Start stage",
+  "prestage.startlist": "{0} riders on the start list (max 8/team).",
+  "prestage.more_riders": "... and {0} more riders",
+  "prestage.error.prepare": "Error preparing the stage.",
+  "prestage.error.data": "Could not load data (res://data/pcrm.sqlite).",
+  "race.seconds": "sec",
+  "race.group.peloton": "Peloton",
+  "race.action.log": "Action log",
+  "race.status": "Status",
+  "common.km": "km",
+  "common.unknown": "Unknown"
+}

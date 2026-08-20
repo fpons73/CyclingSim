@@ -7,12 +7,26 @@ namespace ProCycling.Core.Data;
 /// <summary>Carga de datos maestros desde SQLite (generado por tools/import_data.py).</summary>
 public static class SqliteStore
 {
+    /// <summary>Lista las temporadas disponibles (Fase 4 — importación multi-temporada).</summary>
+    public static List<(int Id, string Name, int Year)> LoadSeasons(string dbPath)
+    {
+        using var con = new SqliteConnection($"Data Source={dbPath};Pooling=False");
+        con.Open();
+        using var cmd = con.CreateCommand();
+        cmd.CommandText = "SELECT id, name, year FROM seasons ORDER BY year";
+        using var r = cmd.ExecuteReader();
+        var list = new List<(int, string, int)>();
+        while (r.Read())
+            list.Add((r.GetInt32(0), r.GetString(1), r.GetInt32(2)));
+        return list;
+    }
+
     public static (List<Team> Teams, List<Rider> Riders) LoadSeason(string dbPath, int seasonId)
     {
         var teams = new List<Team>();
         var riders = new List<Rider>();
 
-        using var con = new SqliteConnection($"Data Source={dbPath}");
+        using var con = new SqliteConnection($"Data Source={dbPath};Pooling=False");
         con.Open();
 
         using (var cmd = con.CreateCommand())

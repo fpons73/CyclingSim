@@ -10,12 +10,14 @@ public partial class Main : Node2D
     public override void _Ready()
     {
         // Self-test headless (verificación CI): carga datos + simula etapa llana + log.
-        if (OS.GetCmdlineArgs().Contains("--selftest"))
+        // Los argumentos de usuario van tras "--" y se leen con GetCmdlineUserArgs().
+        var userArgs = OS.GetCmdlineUserArgs();
+        if (OS.GetCmdlineArgs().Contains("--selftest") || userArgs.Contains("--selftest"))
         {
             CallDeferred(nameof(RunSelfTest));
             return;
         }
-        if (OS.GetCmdlineArgs().Contains("--selftest-tour"))
+        if (OS.GetCmdlineArgs().Contains("--selftest-tour") || userArgs.Contains("--selftest-tour"))
         {
             CallDeferred(nameof(RunSelfTestTour));
             return;
