@@ -36,7 +36,8 @@ Estado actualizado en cada avance. Última actualización: 2026-08-20.
 ### Entrega 3 — Especialidades (Fase 3)
 - [x] E3: CRI, Prólogo, TTT (ver E2: TimeTrialStageSimulator cubre IndividualTimeTrial y TeamTimeTrial)
 - [x] E3: Pavés (FlatCobbles) y Viento cruzado (Crosswind) — tipos de etapa soportados
-- [ ] E3: IA avanzada (12 decisiones PRD §21)
+- [x] E3: IA avanzada — las 12 decisiones del PRD §21 (atacar, seguir ataque, perseguir, mantener ritmo, entrar en fuga, proteger líder, ahorrar energía, lanzar sprint, disputar KoM, controlar pelotón, contraatacar, riesgo en descenso) con objetivos por equipo (sprint/GC/puncheur/fuga/cazador KoM/neutral) y registro en el ActionLog en Director Mode
+- [x] E3: IA integrada en FlatStageSimulator (fuga según rol, control del pelotón, lanzamiento de sprint) y MountainStageSimulator (ataques/contraataques/follow, protección de líder, caza de KoM, riesgo en descenso); 60 tests xUnit verdes
 
 ### Entrega 4 — Pulido (Fase 4)
 - [ ] E4: dados 3D/animaciones, modo espectador avanzado, Stage Editor

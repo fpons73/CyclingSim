@@ -32,11 +32,11 @@ public sealed class FlatStageSimulator
         var peloton = state.Groups.FirstOrDefault(g => g.Kind == GroupKind.Peloton);
         if (peloton is null) throw new InvalidOperationException("Estado sin pelotón inicial.");
 
-        // Fase 1 — fuga temprana.
-        var breakaway = TryFormBreakaway(state, peloton);
-
         // IA del pelotón (Director Mode: decisiones automáticas y registradas).
         var ia = new RaceDecisionEngine(_cfg, state);
+
+        // Fase 1 — fuga temprana.
+        var breakaway = TryFormBreakaway(state, peloton, ia);
 
         // Fase 2 — recorrido por secciones.
         double kmFront = 0;
@@ -49,9 +49,17 @@ public sealed class FlatStageSimulator
             kmFront = Math.Min(stage.DistanceKm, kmFront + secLen);
             state.KmCovered = kmFront;
 
+            // La IA evalúa la situación y emite las 12 decisiones (PRD §21).
+            var secDecisions = ia.Evaluate(state);
+            double tempoControl = 0;
+            if (secDecisions.Any(d => d.Kind == TacticalDecisionKind.ControlPack))
+                tempoControl += 0.8;
+            if (secDecisions.Any(d => d.Kind == TacticalDecisionKind.MaintainPace))
+                tempoControl += 0.25;
+
             bool survivalRoll = breakaway is not null &&
                 _rng.NextDouble() < _cfg.BreakawaySurvivalChance;
-            ApplySection(state, sec, secLen, kmFront, breakaway, survivalRoll, ia, i, stage.Sections.Count);
+            ApplySection(state, sec, secLen, kmFront, breakaway, survivalRoll, ia, i, stage.Sections.Count, tempoControl);
 
             if (sec.IntermediateSprint is { } sprint && sprint.Km > 0 && kmFront >= sprint.Km)
                 AwardIntermediateSprint(state, sprint);
@@ -61,9 +69,10 @@ public sealed class FlatStageSimulator
 
         // Fase 3 — llegada: fuga aguantada o sprint masivo.
         bool survived = breakaway is not null && breakaway.GapSeconds > 30;
+        var decisions = ia.Evaluate(state);
         var results = survived
             ? ResolveSurvivingBreakaway(state, breakaway!)
-            : ResolveMassSprint(state, peloton);
+            : ResolveMassSprint(state, peloton, ia, decisions);
 
         state.Classifications.RegisterStage(results);
         FinalizeTimes(state, results);
@@ -72,12 +81,19 @@ public sealed class FlatStageSimulator
 
     // ---------- Fase 1: fuga ----------
 
-    private RiderGroup? TryFormBreakaway(RaceState state, RiderGroup peloton)
+    private RiderGroup? TryFormBreakaway(RaceState state, RiderGroup peloton, RaceDecisionEngine ia)
     {
         int count = _rng.Next(_cfg.BreakawayMinSize, _cfg.BreakawayMaxSize + 1);
         if (count <= 0) return null;
 
         var active = state.RiderStates.Where(s => s.Status == RiderStatus.Active).ToList();
+        var wantedIds = ia.Tactics
+            .Where(t => t.PrimaryRole == RaceDecisionEngine.TeamRole.Breakaway
+                        || t.PrimaryRole == RaceDecisionEngine.TeamRole.KOMHunter)
+            .SelectMany(t => active.Where(rs => state.Riders.TryGetValue(rs.RiderId, out var r) && r.TeamId == t.TeamId))
+            .Select(s => s.RiderId)
+            .ToHashSet();
+
         var scores = active.Select(s =>
         {
             var r = state.Riders[s.RiderId];
@@ -85,6 +101,12 @@ public sealed class FlatStageSimulator
             double penalty = FatigueCalculator.Penalty(s.Fatigue, r.Attributes.Endurance,
                 r.Attributes.Resistance, _cfg);
             double raw = BlendFor(r, "breakaway_flat");
+            // Los equipos que deciden "entrar en fuga" participan con más probabilidad.
+            if (wantedIds.Contains(s.RiderId))
+                raw += 30;
+            // Los equipos que deciden "ahorrar energía" evitan la fuga.
+            if (!ia.TacticFor(r.TeamId)?.HasAGoal ?? true)
+                raw -= 40;
             return (s.RiderId, raw * (1 - penalty));
         }).Where(x => x.Item2 > 55).ToList();
 
@@ -106,6 +128,11 @@ public sealed class FlatStageSimulator
             pool.RemoveAt(idx);
         }
         if (chosen.Count < _cfg.BreakawayMinSize) return null;
+
+        // La IA registra la decisión de quien entra en fuga (PRD §21).
+        foreach (var id in chosen)
+            if (wantedIds.Contains(id))
+                state.ActionLog.Add($"[PCRM] [IA] {Name(state, id)} entra en fuga (equipo sin carta).");
 
         int groupId = state.Groups.Max(g => g.Id) + 1;
         var group = new RiderGroup
@@ -131,10 +158,11 @@ public sealed class FlatStageSimulator
 
     private void ApplySection(RaceState state, StageSection sec, double secLen, double kmFront,
         RiderGroup? breakaway, bool breakawaySurvives, RaceDecisionEngine ia,
-        int sectionIndex, int totalSections)
+        int sectionIndex, int totalSections, double tempoControl = 0)
     {
         bool hasBreakaway = breakaway is not null;
         double pSpeed = EstimateSpeed(state, pelotonIds(state), _cfg.WorkingRidersPeloton, sec, "flat_tempo");
+        pSpeed += tempoControl;
         double bSpeed = hasBreakaway
             ? EstimateSpeed(state, breakaway!.MemberRiderIds, _cfg.WorkingRidersBreakaway, sec, "breakaway_flat")
             : 0;
@@ -292,8 +320,16 @@ public sealed class FlatStageSimulator
 
     // ---------- Fase 3: llegada ----------
 
-    private List<StageResultRider> ResolveMassSprint(RaceState state, RiderGroup peloton)
+    private List<StageResultRider> ResolveMassSprint(RaceState state, RiderGroup peloton,
+        RaceDecisionEngine ia, IReadOnlyList<TacticalDecision> decisions)
     {
+        // El "lanzamiento del sprint": los esprinters cuyo equipo decidió lanzarlo
+        // reciben un plus de posicionamiento (no de atributo: es táctica/posición).
+        var launchedIds = decisions
+            .Where(d => d.Kind == TacticalDecisionKind.LaunchSprint && d.RiderId is int lid)
+            .Select(d => d.RiderId!.Value)
+            .ToHashSet();
+
         // Tras la caza, todos los activos (incluidos los ex-fugados) disputan la llegada.
         var contenders = state.RiderStates
             .Where(s => s.Status == RiderStatus.Active)
@@ -304,7 +340,9 @@ public sealed class FlatStageSimulator
                     (1 - FatigueCalculator.Penalty(s.Fatigue, r.Attributes.Endurance,
                         r.Attributes.Resistance, _cfg));
                 double noise = 1 + (_rng.NextDouble() - _cfg.RngNoiseCenter) * 2 * _cfg.RngNoiseRange;
-                return (r.Id, TeamId: r.TeamId, Rider: r, State: s, Perf: per * noise);
+                // Posicionamiento: el lanzador de cada equipo deja al esprinter en +3% (táctica).
+                double tactical = launchedIds.Contains(r.Id) ? 1.03 : 1.0;
+                return (r.Id, TeamId: r.TeamId, Rider: r, State: s, Perf: per * noise * tactical);
             })
             .OrderByDescending(x => x.Perf)
             .ToList();

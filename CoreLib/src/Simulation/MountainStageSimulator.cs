@@ -31,6 +31,9 @@ public sealed class MountainStageSimulator
         var peloton = state.Groups.FirstOrDefault(g => g.Kind == GroupKind.Peloton)
             ?? throw new InvalidOperationException("Sin pelotón.");
 
+        // IA táctica: elige quién ataca, quién defiende y quién caza el KoM (PRD §21).
+        var ia = new RaceDecisionEngine(_cfg, state);
+
         // Grupo de cabeza (favoritos) que se fragua en las subidas.
         RiderGroup? front = null;
 
@@ -44,7 +47,8 @@ public sealed class MountainStageSimulator
             kmFront = Math.Min(stage.DistanceKm, kmFront + secLen);
             state.KmCovered = kmFront;
 
-            ApplySection(state, sec, secLen, kmFront, ref front);
+            var decisions = ia.Evaluate(state);
+            ApplySection(state, sec, secLen, kmFront, ref front, ia, decisions);
             if (sec.ClimbId is not null)
                 AwardKoM(state, sec, stage);
             if (kmFront >= stage.DistanceKm)
@@ -52,24 +56,24 @@ public sealed class MountainStageSimulator
         }
 
         state.RngState = _rng.GetState();
-        var results = ResolveFinish(state, front, peloton);
+        var results = ResolveFinish(state, front, peloton, ia);
         state.Classifications.RegisterStage(results);
         FinalizeTimes(state, results);
         return results;
     }
 
     private void ApplySection(RaceState state, StageSection sec, double secLen, double kmFront,
-        ref RiderGroup? front)
+        ref RiderGroup? front, RaceDecisionEngine ia, IReadOnlyList<TacticalDecision> decisions)
     {
         var terrain = sec.DominantTerrain;
 
         switch (terrain)
         {
             case Terrain.Climb:
-                HandleClimb(state, sec, secLen, kmFront, ref front);
+                HandleClimb(state, sec, secLen, kmFront, ref front, ia, decisions);
                 break;
             case Terrain.Descent:
-                HandleDescent(state, sec, secLen, kmFront, ref front);
+                HandleDescent(state, sec, secLen, kmFront, ref front, decisions);
                 break;
             default:
                 HandleFlatish(state, sec, secLen, kmFront, terrain, ref front);
@@ -79,7 +83,7 @@ public sealed class MountainStageSimulator
 
     /// <summary>En la subida: Action Phase + ataques + Pace Check. Se abre hueco clave.</summary>
     private void HandleClimb(RaceState state, StageSection sec, double secLen, double kmFront,
-        ref RiderGroup? front)
+        ref RiderGroup? front, RaceDecisionEngine ia, IReadOnlyList<TacticalDecision> decisions)
     {
         // Rendimiento de subida: MNT+ATT+ACC (ataque) o MNT+STA (pace).
         var climbs = state.RiderStates
@@ -97,6 +101,13 @@ public sealed class MountainStageSimulator
             })
             .ToList();
 
+        // La IA decide quién debe atacar o cazar el KoM (PRD §21) → bonus táctico legítimo.
+        var attackIds = decisions
+            .Where(d => d.Kind is TacticalDecisionKind.Attack or TacticalDecisionKind.ContestKoM
+                        && d.RiderId is int rid)
+            .Select(d => d.RiderId!.Value)
+            .ToHashSet();
+
         // Pace Check: cuántos pueden mantener el ritmo del grupo de cabeza.
         double frontPace = climbs.OrderByDescending(c => c.Pace).Take(8).Average(c => c.Pace);
         double sustainAbove = frontPace * 0.985;
@@ -104,10 +115,16 @@ public sealed class MountainStageSimulator
         // Si no hay grupo de cabeza, los 6 mejores por ataque lo forman en el primer puerto.
         if (front is null)
         {
-            var attackers = climbs.OrderByDescending(c => c.Attack).Take(6).ToList();
-            front = NewGroup(state, GroupKind.SmallGroup, attackers.Select(c => c.Id).ToList(),
-                gap: 0);
-            foreach (var c in attackers)
+            var attackers = climbs
+                .OrderByDescending(c => attackIds.Contains(c.Id) ? 1 : 0)
+                .ThenByDescending(c => c.Attack)
+                .Take(6)
+                .Select(c => c.Id)
+                .ToList();
+            front = NewGroup(state, GroupKind.SmallGroup, attackers, gap: 0);
+            foreach (var c in climbs.Where(x => attackers.Contains(x.Id) && attackIds.Contains(x.Id)))
+                state.ActionLog.Add($"[PCRM] [IA] Ataque de cabeza: {Name(state, c.Id)}");
+            foreach (var c in climbs.Where(x => attackers.Contains(x.Id) && !attackIds.Contains(x.Id)))
                 state.ActionLog.Add($"[PCRM] Ataque en el puerto: {Name(state, c.Id)}");
         }
 
@@ -132,6 +149,7 @@ public sealed class MountainStageSimulator
 
         foreach (var c in climbs)
         {
+            // Proteger líder: los gregarios del equipo del atacante relevan el ritmo (táctica).
             double dtHere = c.Pace >= sustainAbove ? dt : dtSlow;
             if (front is not null && front.MemberRiderIds.Contains(c.Id))
                 dtHere = dt;
@@ -143,16 +161,23 @@ public sealed class MountainStageSimulator
                 c.Rider.Attributes.Endurance, c.Rider.Attributes.Resistance, _cfg);
         }
 
-        front.GapSeconds = 0;
+        if (front is not null) front.GapSeconds = 0;
         state.ActionLog.Add($"[PCRM] Subida: {sec.LengthKm:0.0} km al {sec.GradientPct:0.0}% " +
-            $"(pace {paceFront:0.0}, grupo de cabeza {front.MemberRiderIds.Count})");
+            $"(pace {paceFront:0.0}, grupo de cabeza {front?.MemberRiderIds.Count ?? 0})");
     }
 
     /// <summary>Descenso: DHI decide si se recobra o se pierde tiempo.</summary>
     private void HandleDescent(RaceState state, StageSection sec, double secLen, double kmFront,
-        ref RiderGroup? front)
+        ref RiderGroup? front, IReadOnlyList<TacticalDecision> decisions)
     {
         if (front is null) { HandleFlatish(state, sec, secLen, kmFront, Terrain.Flat, ref front); return; }
+
+        // Decisión "asumir riesgo en el descenso" (PRD §21): los escaladores que atacan
+        // arriesgan en la bajada para volver al grupo de cabeza (bonus DHI legítimo).
+        var riskIds = decisions
+            .Where(d => d.Kind == TacticalDecisionKind.RiskDescent && d.RiderId is int rid)
+            .Select(d => d.RiderId!.Value)
+            .ToHashSet();
 
         double dt = SecondsForKm(secLen, DescentSpeed(_cfg));
         foreach (var rs in state.RiderStates)
@@ -161,12 +186,14 @@ public sealed class MountainStageSimulator
             var r = state.Riders[rs.RiderId];
             double dhi = r.Attributes.Descent;
             double noise = 1 + (_rng.NextDouble() - _cfg.RngNoiseCenter) * 2 * _cfg.RngNoiseRange;
-            double bonus = (dhi - _cfg.GvRef) * 0.02 * noise;
+            double bonus = ((dhi - _cfg.GvRef) * 0.02 + (riskIds.Contains(rs.RiderId) ? 0.02 : 0)) * noise;
             rs.StageTimeSeconds += dt * (1 - bonus);
             rs.Fatigue = FatigueCalculator.AddFatigue(rs.Fatigue, secLen, 0, 0,
                 r.Attributes.Endurance, r.Attributes.Resistance, _cfg);
         }
         front.GapSeconds = Math.Max(0, front.GapSeconds - 15);
+        if (riskIds.Count > 0)
+            state.ActionLog.Add($"[PCRM] [IA] Riesgo en el descenso: {riskIds.Count} corredores arriesgan la bajada.");
         state.ActionLog.Add($"[PCRM] Descenso: DHI decide, hueco recortado.");
     }
 
@@ -237,7 +264,8 @@ public sealed class MountainStageSimulator
         }
     }
 
-    private List<StageResultRider> ResolveFinish(RaceState state, RiderGroup? front, RiderGroup peloton)
+    private List<StageResultRider> ResolveFinish(RaceState state, RiderGroup? front, RiderGroup peloton,
+        RaceDecisionEngine ia)
     {
         // Llegada: grupo reducido (ACC+ATT+HIL o MNT según el final) sobre la cabeza.
         var pool = front is not null ? front.MemberRiderIds
@@ -262,9 +290,18 @@ public sealed class MountainStageSimulator
         var results = new List<StageResultRider>();
         var done = new HashSet<int>();
         int n = Math.Min(30, ranked.Count);
+        // La IA marca a los cazadores de KoM: bonus táctico de posicionamiento en la llegada.
+        var komHunterIds = ia.Tactics
+            .Where(t => t.PrimaryRole == RaceDecisionEngine.TeamRole.KOMHunter && t.GCLeaderId is int lid)
+            .Select(t => t.GCLeaderId!.Value)
+            .ToHashSet();
+        var rankedTactical = ranked
+            .OrderByDescending(x => komHunterIds.Contains(x.Id) ? 1.0 : 0.0)
+            .ThenByDescending(x => x.Perf)
+            .ToList();
         for (int i = 0; i < n; i++)
         {
-            var c = ranked[i];
+            var c = rankedTactical[i];
             _koMByRider.TryGetValue(c.Id, out var kom);
             results.Add(new StageResultRider(c.Id, c.TeamId,
                 c.State.StageTimeSeconds + i * 0.9,

@@ -138,4 +138,27 @@ public class FlatStageSimulatorTests
         foreach (var rs in state.RiderStates)
             Assert.InRange(rs.Fatigue, 0, RulesConfig.Default().FatMax);
     }
+
+    [Fact]
+    public void LaIADecideControlDelPeloton_YPersigueLaFuga()
+    {
+        var state = Setup(42);
+        new FlatStageSimulator(RulesConfig.Default(), 42).Run(state);
+
+        // La IA táctica se registra en el log de la carrera (PRD §21, §23).
+        var decisions = state.ActionLog.Where(l => l.Contains("[IA]")).ToList();
+        Assert.NotEmpty(decisions);
+        Assert.Contains(decisions, l => l.Contains("decide"));
+    }
+
+    [Fact]
+    public void EquipoConEsprinter_LanzaElSprint_EnLaLlegada()
+    {
+        var state = Setup(42);
+        new FlatStageSimulator(RulesConfig.Default(), 42).Run(state);
+
+        // Con esprinters fuertes en el pelotón, un equipo debe decidir "lanzar sprint".
+        Assert.Contains(state.ActionLog,
+            l => l.Contains("lanzar sprint", StringComparison.OrdinalIgnoreCase));
+    }
 }
