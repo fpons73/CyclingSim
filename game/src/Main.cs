@@ -15,6 +15,11 @@ public partial class Main : Node2D
             CallDeferred(nameof(RunSelfTest));
             return;
         }
+        if (OS.GetCmdlineArgs().Contains("--selftest-tour"))
+        {
+            CallDeferred(nameof(RunSelfTestTour));
+            return;
+        }
 
         if (Game.UI.GameManager.LoadData())
             CallDeferred(nameof(GoPreStage));
@@ -25,6 +30,39 @@ public partial class Main : Node2D
     private void GoPreStage()
     {
         GetTree().ChangeSceneToFile("res://src/UI/PreStageScreen.tscn");
+    }
+
+    private void RunSelfTestTour()
+    {
+        GD.Print("[PCRM] SELFTEST-TOUR: cargando datos...");
+        if (!GameManager.LoadData() || !GameData.LoadTour("res://data"))
+        {
+            GD.PushError("[PCRM] SELFTEST-TOUR falló: sin datos o sin tour.");
+            GetTree().Quit(1);
+            return;
+        }
+
+        var (_, teams, riders) = GameData.BuildStartList(12);
+        var results = GameData.RunTour(GameData.TourStages!, teams, riders, 88);
+        if (results is null || results.Count == 0)
+        {
+            GD.PushError("[PCRM] SELFTEST-TOUR falló: sin resultados.");
+            GetTree().Quit(1);
+            return;
+        }
+
+        GD.Print($"[PCRM] SELFTEST-TOUR: {GameData.TourName} · {results.Count} corredores en GC final.");
+        foreach (var line in GameData.TourStages!.Select((s, i) => $"  {i + 1}. {s.Type} — {s.Name} ({s.DistanceKm:0} km)"))
+            GD.Print(line);
+        GD.Print("[PCRM] SELFTEST-TOUR GC final top 5:");
+        foreach (var r in results.Take(5))
+            GD.Print($"  {GameManager.RiderName(r.RiderId)} — {RiderCard.FormatTime(r.StageSeconds)} · pts {r.PointsEarned} · KoM {r.KoMPointsEarned}");
+
+        var leader = results.First();
+        var leaderRider = GameData.RidersById[leader.RiderId];
+        GD.Print($"[PCRM] SELFTEST-TOUR OK: líder GC {GameManager.RiderName(leader.RiderId)} " +
+                 $"({leaderRider.Attributes.Mountain} de montaña).");
+        GetTree().Quit(0);
     }
 
     private void RunSelfTest()

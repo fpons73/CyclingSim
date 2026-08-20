@@ -59,6 +59,44 @@ public static class GameData
         return list;
     }
 
+    // --- Tour Mode ---
+    public static List<Stage>? TourStages;
+    public static string TourName = string.Empty;
+
+    /// <summary>Carga la Grande Boucle (manifiesto + etapas) desde el data dir.</summary>
+    public static bool LoadTour(string dataDir)
+    {
+        string dir = ProjectSettings.GlobalizePath(dataDir);
+        string manifest = System.IO.Path.Combine(dir, "grande_boucle_2026.json");
+        if (!System.IO.File.Exists(manifest)) return false;
+
+        var index = StageJsonLoader.LoadAllFromDirectory(dir)
+            .Where(s => !string.IsNullOrEmpty(s.Id) && s.Sections.Count > 0)
+            .ToDictionary(s => s.Id);
+        try
+        {
+            (TourName, TourStages) = TourLoader.Load(index, manifest);
+            GD.Print($"[TourLoader] {TourName}: {TourStages.Count} etapas cargadas.");
+            return true;
+        }
+        catch (System.InvalidOperationException e)
+        {
+            GD.PrintErr($"[TourLoader] {e.Message}");
+            return false;
+        }
+    }
+
+    public static List<StageResultRider>? RunTour(List<Stage> stages, List<Team> teams, List<Rider> riders, ulong seed)
+    {
+        var tour = new TourSimulator(RulesConfig.Default(), seed);
+        var classifications = tour.Run(stages, teams, riders);
+        return classifications
+            .GcStandings()
+            .OrderBy(c => c.GcSeconds)
+            .Select(c => new StageResultRider(c.RiderId, 0, c.GcSeconds, c.Points, c.KoMPoints, c.IsYoung))
+            .ToList();
+    }
+
     /// <summary>Selecciona un pelotón manejable: N equipos (preferencia WorldTour) × sus corredores.</summary>
     public static (uint Count, List<Team> Teams, List<Rider> Riders) BuildStartList(int teamCount, int perTeam = 8)
     {
