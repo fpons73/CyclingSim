@@ -1,4 +1,5 @@
 using ProCycling.Core.Models;
+using ProCycling.Core.Replay;
 
 namespace ProCycling.Core.Simulation;
 
@@ -19,7 +20,9 @@ public sealed class MountainStageSimulator
         _rng = new SeededRandom(seed);
     }
 
-    public List<StageResultRider> Run(RaceState state)
+    public List<StageResultRider> Run(RaceState state) => Run(state, null);
+
+    public List<StageResultRider> Run(RaceState state, IRaceRecorder? recorder)
     {
         var stage = state.Stage ?? throw new InvalidOperationException("Sin etapa.");
         if (stage.Sections.Count == 0) throw new InvalidOperationException("Sin secciones.");
@@ -51,6 +54,7 @@ public sealed class MountainStageSimulator
             ApplySection(state, sec, secLen, kmFront, ref front, ia, decisions);
             if (sec.ClimbId is not null)
                 AwardKoM(state, sec, stage);
+            recorder?.RecordSection(state);
             if (kmFront >= stage.DistanceKm)
                 break;
         }

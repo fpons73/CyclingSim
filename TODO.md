@@ -4,7 +4,7 @@ Estado actualizado en cada avance. Última actualización: 2026-08-20.
 
 ## En curso
 
-- [ ] **E4 — Pulido (Fase 4)**: pendiente dados 3D/animaciones, modo espectador avanzado, optimización Windows 11 (verificación visual en editor)
+- [ ] **E4 — Pulido (Fase 4)**: pendiente dados 3D/animaciones y optimización Windows 11 (verificación visual en editor)
 
 ## Entregas
 
@@ -44,5 +44,6 @@ Estado actualizado en cada avance. Última actualización: 2026-08-20.
 - [x] E4: i18n ES/EN/FR — Localizer (CoreLib) con diccionarios JSON en `data/i18n/` + `GameLocalizer` integrado en PreStageScreen; fallback a español y por clave (PRD §38)
 - [x] E4: importación multi-temporada — `SeasonImporter` (CoreLib), `SqliteStore.LoadSeasons`, `tools/import_data.py` configurable por temporadas (SEASONS); 88 tests xUnit verdes
 - [x] E4: fix selftest CLI — Godot 4 pasa los args de usuario tras `--`; `Main.cs` ahora lee `OS.GetCmdlineUserArgs()` (causaba que `--selftest` no se detectara y bloquease el arranque cargando PreStageScene)
-- [x] E4: selftests headless verificados (--selftest ganador Tim Merlier; --selftest-tour líder GC #191, exit 0)
-- [ ] E4: dados 3D/animaciones, modo espectador avanzado, optimización Windows 11 (verificación visual)
+- [x] E4: Modo espectador (PRD §23) — `RaceTimeline`/`PlaybackController` en CoreLib (snapshot por sección: grupos, gaps, líder, acciones y decisiones IA; pausa/velocidad/avance/jump), integrado en los 3 simuladores vía `IRaceRecorder` sin romper firmas; RaceScreen convertido en panel espectador con controles + dispatch correcto de simulador por tipo de etapa en `GameData.RunStage`; selftest headless `--selftest-replay`
+- [x] E4: selftests headless verificados (--selftest ganador Tim Merlier; --selftest-tour líder GC #191; --selftest-replay 6 secciones · 18 decisiones IA) — 100 tests xUnit verdes
+- [ ] E4: dados 3D/animaciones, optimización Windows 11 (verificación visual)

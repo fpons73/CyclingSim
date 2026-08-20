@@ -1,5 +1,6 @@
 using Godot;
 using ProCycling.Core.Models;
+using ProCycling.Core.Replay;
 using ProCycling.Core.Simulation;
 
 namespace ProCycling.Game.UI;
@@ -19,6 +20,7 @@ public static class GameManager
 
     public static RaceState? State;
     public static List<StageResultRider>? Results;
+    public static RaceTimeline? Timeline;
 
     public static bool LoadData()
     {
@@ -44,7 +46,17 @@ public static class GameManager
     public static void RunRace()
     {
         if (State is null) return;
-        Results = GameData.RunFlat(State, Seed);
+        var timeline = new RaceTimeline();
+        Results = GameData.RunStage(State, Seed, timeline);
+        Timeline = timeline;
+    }
+
+    /// <summary>Resultado según el timeline espectador si existe (para pantalla).</summary>
+    public static RaceSnapshot? SpectatorSnapshot(int sectionIndex)
+    {
+        if (Timeline is null || sectionIndex < 0 || sectionIndex >= Timeline.Snapshots.Count)
+            return null;
+        return Timeline.Snapshots[sectionIndex];
     }
 
     public static List<string> Classifications()

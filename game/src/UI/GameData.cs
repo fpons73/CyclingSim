@@ -1,6 +1,7 @@
 using Godot;
 using ProCycling.Core.Data;
 using ProCycling.Core.Models;
+using ProCycling.Core.Replay;
 using ProCycling.Core.Simulation;
 
 namespace ProCycling.Game.UI;
@@ -132,6 +133,22 @@ public static class GameData
     {
         var sim = new FlatStageSimulator(RulesConfig.Default(), seed);
         return sim.Run(state);
+    }
+
+    /// <summary>Ejecuta la etapa con el simulador correcto según su tipo y, si se pasa
+    /// un recorder, construye el timeline del modo espectador (PRD §23).</summary>
+    public static List<StageResultRider> RunStage(RaceState state, ulong seed, IRaceRecorder? recorder = null)
+    {
+        var type = state.Stage?.Type ?? StageType.Flat;
+        var cfg = RulesConfig.Default();
+        return (type) switch
+        {
+            StageType.Mountain or StageType.MediumMountain =>
+                new MountainStageSimulator(cfg, seed).Run(state, recorder),
+            StageType.IndividualTimeTrial or StageType.TeamTimeTrial or StageType.Prologue =>
+                new TimeTrialStageSimulator(cfg, seed).Run(state, recorder),
+            _ => new FlatStageSimulator(cfg, seed).Run(state, recorder)
+        };
     }
 
     public static RulesConfig LoadConfig()

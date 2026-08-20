@@ -1,5 +1,6 @@
 using Godot;
 using ProCycling.Core.Models;
+using ProCycling.Core.Replay;
 using ProCycling.Core.Simulation;
 using ProCycling.Game.UI;
 
@@ -20,6 +21,11 @@ public partial class Main : Node2D
         if (OS.GetCmdlineArgs().Contains("--selftest-tour") || userArgs.Contains("--selftest-tour"))
         {
             CallDeferred(nameof(RunSelfTestTour));
+            return;
+        }
+        if (OS.GetCmdlineArgs().Contains("--selftest-replay") || userArgs.Contains("--selftest-replay"))
+        {
+            CallDeferred(nameof(RunSelfTestReplay));
             return;
         }
 
@@ -64,6 +70,47 @@ public partial class Main : Node2D
         var leaderRider = GameData.RidersById[leader.RiderId];
         GD.Print($"[PCRM] SELFTEST-TOUR OK: líder GC {GameManager.RiderName(leader.RiderId)} " +
                  $"({leaderRider.Attributes.Mountain} de montaña).");
+        GetTree().Quit(0);
+    }
+
+    private void RunSelfTestReplay()
+    {
+        // Modo espectador (PRD §23): timeline por sección + control de reproducción.
+        GD.Print("[PCRM] SELFTEST-REPLAY: cargando datos...");
+        if (!Game.UI.GameManager.LoadData() || Game.UI.GameData.Stages is null)
+        {
+            GD.PushError("[PCRM] SELFTEST-REPLAY falló: sin datos.");
+            GetTree().Quit(1);
+            return;
+        }
+
+        var stage = Game.UI.GameData.Stages!.FirstOrDefault(s => s.Type == StageType.Flat);
+        if (stage is null || !Game.UI.GameManager.PrepareRace(stage.Id, 8, 2026))
+        {
+            GD.PushError("[PCRM] SELFTEST-REPLAY falló: sin etapa llana.");
+            GetTree().Quit(1);
+            return;
+        }
+
+        var timeline = new RaceTimeline();
+        new FlatStageSimulator(RulesConfig.Default(), Game.UI.GameManager.Seed)
+            .Run(Game.UI.GameManager.State!, timeline);
+
+        var pc = new PlaybackController(timeline);
+        GD.Print($"[PCRM] SELFTEST-REPLAY: {timeline.Snapshots.Count} secciones · " +
+                 $"{timeline.Decisions().Count} decisiones IA.");
+        pc.Play();
+        int steps = 0;
+        while (pc.Tick(0.33) && steps++ < 40) { } // reproducción rápida
+        pc.JumpTo(timeline.Snapshots.Count - 1);
+        var fin = pc.Current;
+        GD.Print($"[PCRM] SELFTEST-REPLAY final: km {fin.KmCovered:0} · cabeza {fin.LeaderLabel} " +
+                 $"(gap {fin.LeaderTimeSeconds:0} s) · grupos {fin.Groups.Count}");
+        foreach (var d in timeline.Decisions().Take(4))
+            GD.Print($"  s{d.Section}: {d.Action}");
+
+        GD.Print($"[PCRM] SELFTEST-REPLAY OK: {timeline.Snapshots.Count} secciones, " +
+                 $"estado {pc.State}, fin = sección {pc.SectionIndex}.");
         GetTree().Quit(0);
     }
 

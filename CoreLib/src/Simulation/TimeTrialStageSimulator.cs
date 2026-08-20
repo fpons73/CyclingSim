@@ -1,4 +1,5 @@
 using ProCycling.Core.Models;
+using ProCycling.Core.Replay;
 
 namespace ProCycling.Core.Simulation;
 
@@ -18,7 +19,9 @@ public sealed class TimeTrialStageSimulator
         _rng = new SeededRandom(seed);
     }
 
-    public List<StageResultRider> Run(RaceState state)
+    public List<StageResultRider> Run(RaceState state) => Run(state, null);
+
+    public List<StageResultRider> Run(RaceState state, IRaceRecorder? recorder)
     {
         var stage = state.Stage ?? throw new InvalidOperationException("Sin etapa.");
         _rng.RestoreState(state.RngState);
@@ -56,6 +59,7 @@ public sealed class TimeTrialStageSimulator
                 }
                 state.ActionLog.Add($"[PCRM] TTT equipo {team.Key} → {RiderCardTime(teamTime)}");
             }
+            recorder?.RecordSection(state);
             return ResultsFrom(state, orderedIds);
         }
 
@@ -79,6 +83,7 @@ public sealed class TimeTrialStageSimulator
         }
 
         state.RngState = _rng.GetState();
+        recorder?.RecordSection(state);
         return ResultsFrom(state, ranked.Select(x => x.s.RiderId).ToList());
     }
 

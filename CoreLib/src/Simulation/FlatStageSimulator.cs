@@ -1,4 +1,5 @@
 using ProCycling.Core.Models;
+using ProCycling.Core.Replay;
 
 namespace ProCycling.Core.Simulation;
 
@@ -18,7 +19,9 @@ public sealed class FlatStageSimulator
         _rng = new SeededRandom(seed);
     }
 
-    public List<StageResultRider> Run(RaceState state)
+    public List<StageResultRider> Run(RaceState state) => Run(state, null);
+
+    public List<StageResultRider> Run(RaceState state, IRaceRecorder? recorder)
     {
         if (state.Stage is null || state.Stage.Sections.Count == 0)
             throw new InvalidOperationException("La etapa no tiene secciones.");
@@ -63,6 +66,8 @@ public sealed class FlatStageSimulator
 
             if (sec.IntermediateSprint is { } sprint && sprint.Km > 0 && kmFront >= sprint.Km)
                 AwardIntermediateSprint(state, sprint);
+
+            recorder?.RecordSection(state);
         }
 
         state.RngState = _rng.GetState();
